@@ -96,8 +96,26 @@ st.divider()
 
 # ── Dados do ano selecionado ───────────────────────────────────────────────────
 
-gdf    = gdf_all[(gdf_all["ano"] == ano) & gdf_all["geometry"].notna()].copy()
 df_ano = df_votos[df_votos["ano"] == ano]
+
+# Base geométrica: todas as zonas únicas (garante mapa completo em anos antigos)
+all_zones = (
+    gdf_all[gdf_all["geometry"].notna()]
+    [["zona", "id_municipio", "ZE_NOME", "MUN_NOME", "geometry", "id"]]
+    .drop_duplicates(subset=["zona", "id_municipio"])
+)
+
+# Dados do ano (sem colunas de geometria para evitar duplicação)
+year_data = gdf_all[gdf_all["ano"] == ano][
+    ["zona", "id_municipio", "votos_total", "espectro_medio",
+     "candidato_mais_votado", "partido_mais_votado", "espectro_vencedor"]
+].copy()
+
+# Left join: zonas sem dados no ano ficam com NaN
+gdf = gpd.GeoDataFrame(
+    all_zones.merge(year_data, on=["zona", "id_municipio"], how="left"),
+    geometry="geometry",
+)
 
 # GeoJSON para o Plotly
 geojson = json.loads(gdf.to_json())
@@ -157,8 +175,13 @@ with col_mapa:
         cores = px.colors.qualitative.Set1[:len(candidatos)]
         mapa_cores = dict(zip(candidatos, cores))
 
+        gdf_cand = gdf.copy()
+        gdf_cand["candidato_mais_votado"] = gdf_cand["candidato_mais_votado"].fillna("Sem dados")
+        if "Sem dados" in gdf_cand["candidato_mais_votado"].values:
+            mapa_cores["Sem dados"] = "#cccccc"
+
         fig_mapa = px.choropleth_map(
-            gdf,
+            gdf_cand,
             geojson=geojson,
             locations="id",
             color="candidato_mais_votado",
@@ -183,7 +206,10 @@ with col_mapa:
                 "votos_total": "Total de votos",
             },
         )
-        fig_mapa.update_layout(legend_title_text="Candidato mais votado")
+        fig_mapa.update_layout(
+            legend_title_text="Candidato mais votado",
+            legend={"traceorder": "normal"},
+        )
 
     fig_mapa.update_layout(
         height=620,
@@ -238,18 +264,21 @@ with col_stats:
     )
     por_partido["pct"] = (por_partido["votos"] / total_votos * 100).round(1)
 
+    por_partido["label"] = por_partido.apply(
+        lambda r: f"{r['pct']:.1f}%  {r['votos']:,.0f}", axis=1
+    )
+
     fig_bar = px.bar(
         por_partido,
         x="pct",
         y="sigla_partido",
         orientation="h",
-        text="pct",
+        text="label",
         color="pct",
         color_continuous_scale="Blues",
         labels={"pct": "% dos votos", "sigla_partido": ""},
     )
     fig_bar.update_traces(
-        texttemplate="%{text:.1f}%",
         textposition="outside",
     )
     fig_bar.update_layout(
