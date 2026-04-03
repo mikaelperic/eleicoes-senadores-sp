@@ -10,22 +10,38 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Configuração por contexto ───────────────────────────────────────────────────
+
+CONTEXTOS = {
+    "Estado de São Paulo": {
+        "geo_path":    "dados/estado_sp/senadores_por_zona_ano.gpkg",
+        "votos_path":  "dados/estado_sp/senadores_enriquecido.parquet",
+        "titulo":      "Eleições para Senador no Estado de São Paulo",
+        "caption":     "Votos por zona eleitoral · 1994 a 2022 · Fonte: Base dos Dados / TSE · Geometrias: CEM/USP",
+        "center":      {"lat": -22.5, "lon": -48.5},
+        "zoom":        5.8,
+    },
+    "Cidade de São Paulo": {
+        "geo_path":    "dados/cidade_sp/senadores_por_zona_ano.gpkg",
+        "votos_path":  "dados/cidade_sp/senadores_enriquecido.parquet",
+        "titulo":      "Eleições para Senador na Cidade de São Paulo",
+        "caption":     "Votos por zona eleitoral · 1994 a 2022 · Fonte: Base dos Dados / TSE · Geometrias: CEM/USP",
+        "center":      {"lat": -23.55, "lon": -46.63},
+        "zoom":        9.5,
+    },
+}
+
 # ── Dados ──────────────────────────────────────────────────────────────────────
 
 @st.cache_data
-def load_geo():
-    gdf = gpd.read_file("dados/senadores_sp_por_zona_ano.gpkg")
+def load_geo(path):
+    gdf = gpd.read_file(path)
     gdf["id"] = gdf["zona"].astype(str) + "_" + gdf["id_municipio"].astype(str)
     return gdf
 
 @st.cache_data
-def load_votos():
-    return pd.read_parquet("dados/senadores_sp_por_zona_1994_2022_enriquecido.parquet")
-
-gdf_all = load_geo()
-df_votos = load_votos()
-
-ANOS = sorted(gdf_all["ano"].unique().tolist())
+def load_votos(path):
+    return pd.read_parquet(path)
 
 # Cor por espectro para o card de eleitos
 COR_ESPECTRO = {
@@ -39,7 +55,23 @@ COR_ESPECTRO = {
 # ── Header ─────────────────────────────────────────────────────────────────────
 
 st.title("Eleições para Senador em São Paulo")
-st.caption("Votos por zona eleitoral · 1994 a 2022 · Fonte: Base dos Dados / TSE · Geometrias: CEM/USP")
+
+# ── Seleção de contexto ────────────────────────────────────────────────────────
+
+contexto_nome = st.radio(
+    "Contexto geográfico:",
+    options=list(CONTEXTOS.keys()),
+    horizontal=True,
+)
+
+cfg = CONTEXTOS[contexto_nome]
+
+st.caption(cfg["caption"])
+
+gdf_all  = load_geo(cfg["geo_path"])
+df_votos = load_votos(cfg["votos_path"])
+
+ANOS = sorted(gdf_all["ano"].unique().tolist())
 
 # ── Seleção de ano (pills) ─────────────────────────────────────────────────────
 
@@ -64,15 +96,13 @@ st.divider()
 
 # ── Dados do ano selecionado ───────────────────────────────────────────────────
 
-gdf = gdf_all[(gdf_all["ano"] == ano) & gdf_all["geometry"].notna()].copy()
+gdf    = gdf_all[(gdf_all["ano"] == ano) & gdf_all["geometry"].notna()].copy()
 df_ano = df_votos[df_votos["ano"] == ano]
 
 # GeoJSON para o Plotly
 geojson = json.loads(gdf.to_json())
 for i, feature in enumerate(geojson["features"]):
     feature["id"] = gdf.iloc[i]["id"]
-
-centro_sp = {"lat": -22.5, "lon": -48.5}
 
 # ── Layout: mapa | painel de estatísticas ──────────────────────────────────────
 
@@ -88,11 +118,11 @@ with col_mapa:
             geojson=geojson,
             locations="id",
             color="espectro_medio",
-            color_continuous_scale="RdBu",   # vermelho = esquerda, azul = direita
+            color_continuous_scale="RdBu",
             range_color=[1, 7],
             map_style="open-street-map",
-            zoom=5.8,
-            center=centro_sp,
+            zoom=cfg["zoom"],
+            center=cfg["center"],
             opacity=0.75,
             hover_data={
                 "id": False,
@@ -134,8 +164,8 @@ with col_mapa:
             color="candidato_mais_votado",
             color_discrete_map=mapa_cores,
             map_style="open-street-map",
-            zoom=5.8,
-            center=centro_sp,
+            zoom=cfg["zoom"],
+            center=cfg["center"],
             opacity=0.75,
             hover_data={
                 "id": False,
@@ -232,7 +262,7 @@ with col_stats:
     st.plotly_chart(fig_bar, use_container_width=True)
 
     n_candidatos = df_ano["nome"].nunique()
-    n_partidos = df_ano["sigla_partido"].nunique()
+    n_partidos   = df_ano["sigla_partido"].nunique()
     st.caption(
         f"Total de votos válidos: **{total_votos:,}**  \n"
         f"Candidatos: {n_candidatos} · Partidos: {n_partidos}"

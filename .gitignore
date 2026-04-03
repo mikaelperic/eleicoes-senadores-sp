@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Dados intermediários e shapefiles (pesados, não vão ao Streamlit)
+dados/*/shapefiles/
+dados/*/senadores_*geoespacial.gpkg
+dados/*/senadores_*por_zona_1994_2022.parquet
+dados/*/senadores_csp_por_zona_1994_2022.parquet
+
+# Imagens locais (geradas na máquina, não necessárias no deploy)
+imagens/
+
+# Scripts de pipeline (rodam localmente, não no Streamlit)
+scripts/
